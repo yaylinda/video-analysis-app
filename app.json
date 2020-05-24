@@ -1,0 +1,17 @@
+{
+  "name": "VideoAnalysisAppTemp",
+  "displayName": "VideoAnalysisAppTemp",
+  "expo": {
+    "name": "VideoAnalysisAppTemp",
+    "slug": "VideoAnalysisAppTemp",
+    "version": "1.0.0",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}
