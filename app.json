@@ -1,9 +1,9 @@
 {
-  "name": "VideoAnalysisAppTemp",
-  "displayName": "VideoAnalysisAppTemp",
+  "name": "VideoAnalysisApp",
+  "displayName": "VideoAnalysisApp",
   "expo": {
-    "name": "VideoAnalysisAppTemp",
-    "slug": "VideoAnalysisAppTemp",
+    "name": "VideoAnalysisApp",
+    "slug": "VideoAnalysisApp",
     "version": "1.0.0",
     "platforms": [
       "ios",
