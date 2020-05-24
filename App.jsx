@@ -1,7 +1,8 @@
 import React, { Component } from 'react';
 import { AsyncStorage, View } from 'react-native';
 import { Button, Text, Overlay } from 'react-native-elements';
-import { RNCamera } from 'react-native-camera';
+import { Camera } from 'expo-camera';
+import Icon from 'react-native-vector-icons/FontAwesome';
 import { STORAGE_KEYS } from './util/constants';
 import styles from './styles';
 
@@ -11,7 +12,8 @@ export default class App extends Component {
     super(props);
     this.state = {
       token: null,
-      openCamera: false,
+      hasPermission: false,
+      showCamera: false,
       isRecording: false,
     }
   }
@@ -27,77 +29,86 @@ export default class App extends Component {
     }
   }
 
+  async getCameraPermissions() {
+    const { status } = await Camera.requestPermissionsAsync();
+    this.setState({ hasPermission: status === 'granted' });
+    console.log(`getCameraPermissions - this.state.hasPermission: ${this.state.hasPermission}`);
+  }
+
   toggleCamera() {
-    console.log(`toggleCamera - this.state.openCamera: ${this.state.openCamera}`);
-    this.setState({ openCamera: !this.state.openCamera });
+    
+    this.setState({ showCamera: !this.state.showCamera });
+    console.log(`toggleCamera - this.state.showCamera: ${this.state.showCamera}`);
   }
 
-  stopRecording() {
-    console.log(`stopRecording - this.state.isRecording: ${this.state.isRecording}`);
-    this.setState({ openCamera: !this.state.isRecording });
-  }
-
-  startRecording() {
+  toggleRecording() {
+    this.setState({ isRecording: !this.state.isRecording });
     console.log(`startRecording - this.state.isRecording: ${this.state.isRecording}`);
-    this.setState({ openCamera: !this.state.isRecording });
   }
 
   renderCameraView() {
     return(
-      <View>
-        <RNCamera
-          ref={ref => {
-            this.camera = ref;
-          }}
-          type={RNCamera.Constants.Type.back}
-          flashMode={RNCamera.Constants.FlashMode.on}
-          androidCameraPermissionOptions={{
-            title: 'Permission to use camera',
-            message: 'We need your permission to use your camera',
-            buttonPositive: 'Ok',
-            buttonNegative: 'Cancel',
-          }}
-          androidRecordAudioPermissionOptions={{
-            title: 'Permission to use audio recording',
-            message: 'We need your permission to use your audio',
-            buttonPositive: 'Ok',
-            buttonNegative: 'Cancel',
-          }}
-          onGoogleVisionBarcodesDetected={({ barcodes }) => {
-            console.log(barcodes);
-          }}
-        />
-        <View style={{ flex: 0, flexDirection: 'row', justifyContent: 'center' }}>
-          {
-            this.state.isRecording 
-              ? <Button title="STOP"  onPress={() => this.stopRecording()}/>
-              : <Button title="START" onPress={() => this.startRecording()}/>
-          }
+      <View style={{ flex: 1 }}>
+      <Camera style={{ flex: 1 }} type={Camera.Constants.Type.front}>
+
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'transparent',
+            flexDirection: 'row',
+          }}>
         </View>
+        {
+          this.state.isRecording ?
+            <Button
+              title="Stop Recording"
+              buttonStyle={{ backgroundColor: 'red' }}
+              icon={<Icon name="stop" size={15} color="white" />}
+              onPress={() => this.toggleRecording()}
+            /> :
+            <Button 
+              title="Start Recording"
+              buttonStyle={{ backgroundColor: 'green' }}
+              icon={<Icon name="play" size={15} color="white" />}
+              onPress={() => this.toggleRecording()}
+            />
+        }
+      </Camera>
+    </View>
+    );
+  }
+
+  renderTokenView() {
+    return (
+      <View style={styles.container}>
+
+        {
+          this.state.token ? 
+            <Token token={this.state.token}/> : 
+            <Text>Please upload a new video to obtain a token</Text>
+        }
+        <Button 
+          title="New Video"
+          onPress={() => this.toggleCamera()}
+        />
+      </View>
+    )
+  }
+
+  render() {
+    return (
+      <View style={{ flex: 1 }}>
+        {
+          this.state.showCamera ? 
+            this.renderCameraView() :
+            this.renderTokenView()
+        }
       </View>
     );
   }
 
   componentDidMount() {
     this.getTokenFromStorage();
+    this.getCameraPermissions();
   }
-
-  render() {
-    return (
-      <View style={styles.container}>
-        {
-          this.state.token 
-            ? <Token token={this.state.token}/> 
-            : <Text>Please upload a new video to obtain a token</Text>
-        }
-
-        { this.state.openCamera ? this.renderCameraView() : null }
-
-        <Button 
-          title="New Video"
-          onPress={() => this.toggleCamera()}
-        />
-      </View>
-    );
-  } 
 }

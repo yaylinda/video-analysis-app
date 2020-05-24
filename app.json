@@ -12,6 +12,24 @@
     ],
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "ios": {
+      "infoPlist": {
+        "bundleIdentifier": "yay.linda.videoanalysisapp",
+        "infoPlist": {
+          "NSCameraUsageDescription": "Need to use camera"
+        }
+      }
+    },
+    "android": {
+      "package": "yay.linda.videoanalysisapp",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    }
   }
 }
