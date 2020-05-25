@@ -10,8 +10,6 @@ const FIREBASE_CONFIG = {
   messagingSenderId: Environment['FIREBASE_MESSAGING_SENDER_ID']
 }
 
-console.log(`FIREBASE_CONFIG: ${JSON.stringify(FIREBASE_CONFIG)}`);
-
 if (!firebase.apps.length) {
   console.log('Initialized new firebase');
   firebase.initializeApp(FIREBASE_CONFIG);

@@ -1,10 +1,11 @@
 import React, { Component } from 'react';
 import { AsyncStorage, View } from 'react-native';
-import { Button, Text, Overlay } from 'react-native-elements';
+import { Button, Text, Header } from 'react-native-elements';
 import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { STORAGE_KEYS, VIDEO_STATUS } from './constants';
-import { uploadVideo, annotateVideo } from './googlecloud';
+import { uploadVideo, annotateVideo, getAnnotationResults } from './googlecloud';
+import statement from './statement.js';
 import styles from './styles';
 
 export default class App extends Component {
@@ -13,10 +14,13 @@ export default class App extends Component {
     super(props);
     this.state = {
       token: null,
+      videoInfo: null,
       hasPermission: false,
       showCamera: false,
       isRecording: false,
-      lastRecordedVideoData: null,
+      cameraData: null,
+      isUploading: false,
+      showResults: false,
     }
   }
 
@@ -28,6 +32,17 @@ export default class App extends Component {
       this.setState({ token });
     } else {
       console.log('did not find existing token');
+    }
+  }
+
+  async getVideoInfoFromStorage() {
+    const videoInfo = await AsyncStorage.getItem(STORAGE_KEYS.VIDEO_INFO);
+
+    if (videoInfo) {
+      console.log(`found existing videoInfo: ${JSON.stringify(videoInfo)}`);
+      this.setState({ videoInfo });
+    } else {
+      console.log('did not find existing videoInfo');
     }
   }
 
@@ -47,8 +62,8 @@ export default class App extends Component {
     console.log(`stopRecording - this.state.isRecording: ${this.state.isRecording}`);
     console.log('stopRecording - calling camera.stopRecording');
     this.camera.stopRecording();
-    console.log(`stopRecording - this.state.lastRecordedVideoData: ${JSON.stringify(this.state.lastRecordedVideoData)}`);
-    this.setState({ showCamera : false });
+    console.log(`stopRecording - this.state.cameraData: ${JSON.stringify(this.state.cameraData)}`);
+    this.setState({ showCamera: false });
   }
 
   startRecording() {
@@ -56,117 +71,177 @@ export default class App extends Component {
     console.log(`startRecording - this.state.isRecording: ${this.state.isRecording}`);
     console.log('startRecording - calling recordAsync');
     if (this.camera) {
-      this.camera.recordAsync().then((data) => this.setState({ lastRecordedVideoData: data }));
-    } 
+      this.camera.recordAsync().then((data) => this.setState({ cameraData: data }));
+    }
     console.log('startRecording - called async recordAsync');
   }
 
   async uploadAndAnnotateVideo() {
-    console.log(`uploadAndAnnotateVideo - ${this.state.lastRecordedVideoData.uri}`);
+    this.setState({ isUploading: true });
 
-    const video_upload_info = {
-      localUri: this.state.lastRecordedVideoData.uri,
+    console.log(`uploadAndAnnotateVideo - ${this.state.cameraData.uri}`);
+
+    const videoInfo = {
+      localUri: this.state.cameraData.uri,
       createdTime: new Date().toString(),
       uploadStatus: VIDEO_STATUS.IN_PROGRESS,
       uploadedTime: null,
       cloudStorageUri: null,
       annotationStatus: VIDEO_STATUS.NOT_STARTED,
+      annotationResults: null,
     }
-    
-    console.log(`uploadAndAnnotateVideo - video_upload_info: ${JSON.stringify(video_upload_info)}`);
 
-    await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(video_upload_info));
+    console.log(`uploadAndAnnotateVideo - videoInfo: ${JSON.stringify(videoInfo)}`);
 
-    console.log('uploadAndAnnotateVideo - finitshed setting video_upload_info in AsyncStorage');
+    await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
+
+    console.log('uploadAndAnnotateVideo - finitshed setting videoInfo in AsyncStorage');
 
     // TODO - handle error with try-catch
-    const cloudStorageUri = await uploadVideo(video_upload_info.localUri);
+    const cloudStorageUri = await uploadVideo(videoInfo.localUri);
 
     console.log(`uploadAndAnnotateVideo - finished upload cloudStorageUri: ${cloudStorageUri}`);
 
-    video_upload_info['cloudStorageUri'] = cloudStorageUri;
-    video_upload_info['uploadStatus'] = VIDEO_UPLOAD_STATUS.SUCCESS;
-    video_upload_info['uploadedTime'] = new Date().toString();
-    video_upload_info['annotationStatus'] = VIDEO_STATUS.IN_PROGRESS;
-    await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(video_upload_info));
+    videoInfo['cloudStorageUri'] = cloudStorageUri;
+    videoInfo['uploadStatus'] = VIDEO_STATUS.SUCCESS;
+    videoInfo['uploadedTime'] = new Date().toString();
+    videoInfo['annotationStatus'] = VIDEO_STATUS.IN_PROGRESS;
+    await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
 
-    console.log(`uploadAndAnnotateVideo - video_upload_info: ${JSON.stringify(video_upload_info)}`);
+    console.log(`uploadAndAnnotateVideo - videoInfo: ${JSON.stringify(videoInfo)}`);
 
-    const annotation = annotateVideo(cloudStorageUri);
+    const result = await annotateVideo(cloudStorageUri);
 
-    console.log(`uploadAndAnnotateVideo - finished annotation: ${JSON.stringify(annotation)}`);
+    console.log(`uploadAndAnnotateVideo - annotation result: ${JSON.stringify(result)}`);
+
+    const transcription = await getAnnotationResults(result.name);
+
+    console.log(`uploadAndAnnotateVideo - transcription: ${JSON.stringify(transcription)}`);
+
+    videoInfo['annotationStatus'] = VIDEO_STATUS.SUCCESS;
+    videoInfo['annotationResults'] = transcription;
+    await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
+
+    this.setState({ isUploading: false, showResults: true, videoInfo });
+  }
+
+  renderRecordVideoButton() {
+    return (
+      <Button
+        buttonStyle={{ height: 70 }}
+        disabled={this.state.isUploading}
+        title="Record Video"
+        onPress={() => this.toggleCamera()}
+      />
+    );
+  }
+
+  renderUploadVideoButton() {
+    return (
+      <Button
+        title="Upload Video"
+        disabled={this.state.cameraData === null || this.state.isUploading}
+        onPress={() => this.uploadAndAnnotateVideo()}
+      />
+    );
   }
 
   renderCameraView() {
-    return(
+    return (
       <View style={{ flex: 1 }}>
-      <Camera
-        ref={ref => {
-          this.camera = ref;
-        }}
-        style={{ flex: 1 }} 
-        type={Camera.Constants.Type.front}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'transparent',
-            flexDirection: 'row',
-          }}>
-        </View>
-        {
-          this.state.isRecording ?
-            <Button
-              title="Stop Recording"
-              buttonStyle={{ backgroundColor: 'red' }}
-              icon={<Icon name="stop" size={15} color="white" />}
-              onPress={() => this.stopRecording()}
-            /> :
-            <Button 
-              title="Start Recording"
-              buttonStyle={{ backgroundColor: 'green' }}
-              icon={<Icon name="play" size={15} color="white" />}
-              onPress={() => this.startRecording()}
-            />
-        }
-      </Camera>
-    </View>
+        <Camera
+          ref={ref => {
+            this.camera = ref;
+          }}
+          style={{ flex: 1 }}
+          type={Camera.Constants.Type.front}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'transparent',
+              flexDirection: 'row',
+            }}>
+          </View>
+          {
+            this.state.isRecording ?
+              <Button
+                title="Stop Recording"
+                buttonStyle={{ backgroundColor: 'red', height: 70 }}
+                icon={<Icon name="stop" size={15} color="white" />}
+                onPress={() => this.stopRecording()}
+              /> :
+              <Button
+                title="Start Recording"
+                buttonStyle={{ backgroundColor: 'green', height: 70 }}
+                icon={<Icon name="play" size={15} color="white" />}
+                onPress={() => this.startRecording()}
+              />
+          }
+        </Camera>
+      </View>
     );
   }
 
   renderTokenView() {
     return (
-      <View style={styles.container}>
+      <View style={{ flex: 1 }}>
+        {this.renderHeader()}
+        <View style={{ flex: 1, padding: 20 }}>
+          <View style={{ flex: 1, backgroundColor: 'light-grey' }}>
+            {
+              this.state.token ?
+                <Text>Token: {this.state.token}</Text> :
+                this.state.isUploading ?
+                  <Text>Uploading...</Text> :
+                  <Text>Please record and upload a video to obtain a token</Text>
+            }
+          </View>
+        </View>
         {
-          this.state.token ? 
-            <Token token={this.state.token}/> : 
-            <Text>Please record and upload a video to obtain a token</Text>
+          this.renderUploadVideoButton()
         }
         {
-          <Text>
-            {this.state.lastRecordedVideoData ? this.state.lastRecordedVideoData.uri : 'No video uri'}
-          </Text>
+          this.renderRecordVideoButton()
         }
-        <Button
-          title="Upload Video"
-          disabled={this.state.lastRecordedVideoData === null}
-          onPress={() => this.uploadAndAnnotateVideo()}
-        />
-        <Button 
-          title="Record Video"
-          onPress={() => this.toggleCamera()}
-        />
       </View>
-    )
+    );
+  }
+
+  renderResults() {
+    return (
+      <View style={{ flex: 1 }}>
+        {this.renderHeader()}
+        <Text>You said:</Text>
+        <Text>{this.state.videoInfo.annotationResults.transcript}</Text>
+        {
+          this.renderUploadVideoButton()
+        }
+        {
+          this.renderRecordVideoButton()
+        }
+      </View>
+    );
+  }
+
+  renderHeader() {
+    return (
+      <Header
+        placement="left"
+        leftComponent={{ icon: 'menu', color: '#fff' }}
+        centerComponent={{ text: 'COVID Statement', style: { color: '#fff' } }}
+      />);
   }
 
   render() {
     return (
       <View style={{ flex: 1 }}>
         {
-          this.state.showCamera ? 
-            this.renderCameraView() :
-            this.renderTokenView()
+          this.state.showResults ?
+            this.renderResults() :
+            this.state.showCamera ?
+              this.renderCameraView() :
+              this.renderTokenView()
         }
       </View>
     );
@@ -174,7 +249,7 @@ export default class App extends Component {
 
   componentDidMount() {
     this.getTokenFromStorage();
-    // TODO - get video info from storage
+    this.getVideoInfoFromStorage();
     this.getCameraPermissions();
   }
 }

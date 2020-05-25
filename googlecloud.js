@@ -3,20 +3,22 @@ import {makeApiRequest} from './api';
 import * as FileSystem from 'expo-file-system';
 import Environment from './config/environment';
 import firebase from './config/firebase';
-// import 'react-native-get-random-values';
-// import { v4 as uuidv4 } from 'uuid';
 
-// TODO - find way to securely send api key
-const CLOUD_STORAGE_ENDPOINT = `https://storage.googleapis.com/upload/storage/v1/b/[BUCKET_NAME]/o?uploadType=media&name=[OBJECT_NAME]&key=${API_KEY}`;
+const VIDEO_ANNOTATION_ENDPOINT = `https://videointelligence.googleapis.com/v1p3beta1/videos:annotate`;
+const VIDEO_ANNOTATION_RESULTS_ENDPOINT = 'https://videointelligence.googleapis.com/v1/';
 
-// TODO - find way to securely send api key
-const VIDEO_ANNOTATION_ENDPOINT = `https://videointelligence.googleapis.com/v1/videos:annotate?key=${API_KEY}`;
+const VIDEO_CONTEXT = {
+  speechTranscriptionConfig: {
+    languageCode: 'en-US',
+    enableAutomaticPunctuation: true,
+  },
+};
 
-const CREDENTIALS_FILE = 'credentials/service_account.json';
-
-const BUCKET_NAME = 'another-linda-bucket';
-
-const PREFIX = 'video-analysis';
+const DEFAULT_HEADERS = {
+  Accept: 'application/json',
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${Environment['VIDEO_INTELLIGENCE_AUTH_TOKEN']}`,
+};
 
 export const uploadVideo = async (localUri) => {
   console.log(`uploadVideo - localUri: ${localUri}`);
@@ -54,13 +56,41 @@ export const uploadVideo = async (localUri) => {
   return await snapshot.ref.toString();
 }
 
-const videoContext = {
-  speechTranscriptionConfig: {
-    languageCode: 'en-US',
-    enableAutomaticPunctuation: true,
-  },
-};
+export const annotateVideo = async (inputUri) => {
+  const endpoint = `${VIDEO_ANNOTATION_ENDPOINT}`;
 
-export const annotateVideo = async (gcsUri) => {
+  const body = {
+    inputUri: inputUri,
+    features: ['SPEECH_TRANSCRIPTION'],
+    videoContext: VIDEO_CONTEXT
+  }
 
+  const response = await makeApiRequest(endpoint, 'POST', DEFAULT_HEADERS, JSON.stringify(body));
+
+  return response;
 }
+
+export const getAnnotationResults = async(resultsPath) => {
+  const endpoint = `${VIDEO_ANNOTATION_RESULTS_ENDPOINT}${resultsPath}`;
+
+  let response;
+
+  while (true) {
+    response = await makeApiRequest(endpoint, 'GET', DEFAULT_HEADERS, null);
+    console.log(`getAnnotationResults - json: ${JSON.stringify(response)}`);
+
+    await sleep(5000);
+    
+    if (response['done']) {
+      console.log(`getAnnotationResults - done!`);
+      break;
+    }
+  }
+
+  return response['response']['annotationResults'][0]['speechTranscriptions'][0]['alternatives'][0];
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
