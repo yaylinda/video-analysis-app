@@ -1,4 +1,3 @@
-import {API_KEY} from './credentials/key';
 import {makeApiRequest} from './api';
 import * as FileSystem from 'expo-file-system';
 import Environment from './config/environment';
@@ -14,69 +13,38 @@ const VIDEO_CONTEXT = {
   },
 };
 
-const DEFAULT_HEADERS = {
-  Accept: 'application/json',
-  'Content-Type': 'application/json',
-  'Authorization': `Bearer ${Environment['VIDEO_INTELLIGENCE_AUTH_TOKEN']}`,
+const getHeaders = (accessToken) => {
+  return {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
+  }
 };
 
-export const uploadVideo = async (localUri) => {
-  console.log(`uploadVideo - localUri: ${localUri}`);
-
-  const blob = await new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = function() {
-      resolve(xhr.response);
-    };
-    xhr.onerror = function(e) {
-      console.log(e);
-      reject(new TypeError('Network request failed'));
-    };
-    xhr.responseType = 'blob';
-    xhr.open('GET', localUri, true);
-    xhr.send(null);
-  });
-
-  console.log(`uploadVideo - got blob`);
-
-  const objectName = `${localUri.split('/').pop()}`;
-
-  const ref = firebase
-    .storage()
-    .ref()
-    .child(objectName);
-
-  const snapshot = await ref.put(blob);
-
-  console.log(`uploadVideo - got snapshot`);
-
-  // We're done with the blob, close and release it
-  blob.close();
-
-  return await snapshot.ref.toString();
-}
-
-export const annotateVideo = async (inputUri) => {
+export const annotateVideo = async (localUri, accessToken) => {
   const endpoint = `${VIDEO_ANNOTATION_ENDPOINT}`;
 
+  const inputContent = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+
   const body = {
-    inputUri: inputUri,
+    inputContent: inputContent,
     features: ['SPEECH_TRANSCRIPTION'],
     videoContext: VIDEO_CONTEXT
   }
 
-  const response = await makeApiRequest(endpoint, 'POST', DEFAULT_HEADERS, JSON.stringify(body));
+  const response = await makeApiRequest(endpoint, 'POST', getHeaders(accessToken), JSON.stringify(body));
 
   return response;
 }
 
-export const getAnnotationResults = async(resultsPath) => {
+export const getAnnotationResults = async(resultsPath, accessToken) => {
   const endpoint = `${VIDEO_ANNOTATION_RESULTS_ENDPOINT}${resultsPath}`;
+  const headers = getHeaders(accessToken);
 
   let response;
 
   while (true) {
-    response = await makeApiRequest(endpoint, 'GET', DEFAULT_HEADERS, null);
+    response = await makeApiRequest(endpoint, 'GET', headers, null);
     console.log(`getAnnotationResults - json: ${JSON.stringify(response)}`);
 
     await sleep(5000);

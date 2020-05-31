@@ -1,18 +1,22 @@
 import React, { Component } from 'react';
 import { AsyncStorage, View } from 'react-native';
-import { Button, Text, Header } from 'react-native-elements';
+import { Avatar, Button, Text, Header } from 'react-native-elements';
 import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import * as Google from 'expo-google-app-auth';
+import * as Permissions from 'expo-permissions';
 import { STORAGE_KEYS, VIDEO_STATUS } from './constants';
 import { uploadVideo, annotateVideo, getAnnotationResults } from './googlecloud';
 import statement from './statement.js';
 import styles from './styles';
+import Environment from './config/environment';
 
 export default class App extends Component {
 
   constructor(props) {
     super(props);
     this.state = {
+      googleLoginResult: null,
       token: null,
       videoInfo: null,
       hasPermission: false,
@@ -22,6 +26,30 @@ export default class App extends Component {
       isUploading: false,
       showResults: false,
     }
+  }
+
+  async doGoogleLogin() {
+    let googleLoginResult = await AsyncStorage.getItem(STORAGE_KEYS.GOOGLE_LOGIN_RESULT);
+
+    if (googleLoginResult) {
+      // TODO - also check to see that googleLoginResult has not expired
+      console.log(`doGoogleLogin - already have googleLoginResult: ${googleLoginResult}`);
+      googleLoginResult = JSON.parse(googleLoginResult);
+    } else {
+      console.log(`doGoogleLogin - starting google login process`);
+
+      googleLoginResult = await Google.logInAsync({
+        androidClientId: Environment['ANDROID_CLIENT_ID'],
+        iosClientId: Environment['IOS_CLIENT_ID'],
+        scopes: ['profile', 'email', 'https://www.googleapis.com/auth/cloud-platform'],
+      });
+
+      console.log(`doGoogleLogin - got result from login: ${JSON.stringify(googleLoginResult)}`);
+
+      await AsyncStorage.setItem(STORAGE_KEYS.GOOGLE_LOGIN_RESULT, JSON.stringify(googleLoginResult));
+    }
+
+    this.setState({ googleLoginResult });
   }
 
   async getTokenFromStorage() {
@@ -36,20 +64,26 @@ export default class App extends Component {
   }
 
   async getVideoInfoFromStorage() {
-    const videoInfo = await AsyncStorage.getItem(STORAGE_KEYS.VIDEO_INFO);
+    let videoInfo = await AsyncStorage.getItem(STORAGE_KEYS.VIDEO_INFO);
+    videoInfo = JSON.parse(videoInfo);
 
     if (videoInfo) {
+      // TODO - check that video has not expired
       console.log(`found existing videoInfo: ${JSON.stringify(videoInfo)}`);
       this.setState({ videoInfo });
+
+      if (videoInfo.annotationResults && videoInfo.annotationResults.transcript) {
+        this.setState({ showResults: true });
+      }
     } else {
       console.log('did not find existing videoInfo');
     }
   }
 
-  async getCameraPermissions() {
-    const { status } = await Camera.requestPermissionsAsync();
+  async checkPermissions() {
+    const { status } = await Permissions.askAsync(Permissions.CAMERA, Permissions.AUDIO_RECORDING, Permissions.CAMERA_ROLL);
     this.setState({ hasPermission: status === 'granted' });
-    console.log(`getCameraPermissions - this.state.hasPermission: ${this.state.hasPermission}`);
+    console.log(`getPermissions - this.state.hasPermission: ${this.state.hasPermission}`);
   }
 
   toggleCamera() {
@@ -84,9 +118,6 @@ export default class App extends Component {
     const videoInfo = {
       localUri: this.state.cameraData.uri,
       createdTime: new Date().toString(),
-      uploadStatus: VIDEO_STATUS.IN_PROGRESS,
-      uploadedTime: null,
-      cloudStorageUri: null,
       annotationStatus: VIDEO_STATUS.NOT_STARTED,
       annotationResults: null,
     }
@@ -97,24 +128,11 @@ export default class App extends Component {
 
     console.log('uploadAndAnnotateVideo - finitshed setting videoInfo in AsyncStorage');
 
-    // TODO - handle error with try-catch
-    const cloudStorageUri = await uploadVideo(videoInfo.localUri);
-
-    console.log(`uploadAndAnnotateVideo - finished upload cloudStorageUri: ${cloudStorageUri}`);
-
-    videoInfo['cloudStorageUri'] = cloudStorageUri;
-    videoInfo['uploadStatus'] = VIDEO_STATUS.SUCCESS;
-    videoInfo['uploadedTime'] = new Date().toString();
-    videoInfo['annotationStatus'] = VIDEO_STATUS.IN_PROGRESS;
-    await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
-
-    console.log(`uploadAndAnnotateVideo - videoInfo: ${JSON.stringify(videoInfo)}`);
-
-    const result = await annotateVideo(cloudStorageUri);
+    const result = await annotateVideo(videoInfo.localUri, this.state.googleLoginResult.accessToken);
 
     console.log(`uploadAndAnnotateVideo - annotation result: ${JSON.stringify(result)}`);
 
-    const transcription = await getAnnotationResults(result.name);
+    const transcription = await getAnnotationResults(result.name, this.state.googleLoginResult.accessToken);
 
     console.log(`uploadAndAnnotateVideo - transcription: ${JSON.stringify(transcription)}`);
 
@@ -212,8 +230,12 @@ export default class App extends Component {
     return (
       <View style={{ flex: 1 }}>
         {this.renderHeader()}
-        <Text>You said:</Text>
-        <Text>{this.state.videoInfo.annotationResults.transcript}</Text>
+        <View style={{ flex: 1, padding: 20 }}>
+          <View style={{ flex: 1, backgroundColor: 'light-grey' }}>
+            <Text>You said:</Text>
+            <Text>{this.state.videoInfo.annotationResults.transcript}</Text>
+          </View>
+        </View>
         {
           this.renderUploadVideoButton()
         }
@@ -224,12 +246,34 @@ export default class App extends Component {
     );
   }
 
+  renderAvatar(avatarUrl) {
+
+    console.log(`***************** ${avatarUrl}`);
+
+    return (
+      <Avatar
+        rounded
+        source={{
+          uri: `${avatarUrl}`,
+        }}
+      />
+    );
+  }
+
   renderHeader() {
+    let avatarUrl = null;
+    if (this.state.googleLoginResult && this.state.googleLoginResult.type === 'success' && this.state.googleLoginResult.user) {
+      avatarUrl = this.state.googleLoginResult.user.photoUrl;
+    }
+
+    console.log(`renderHeader - avatarUrl: ${avatarUrl}`);
+
     return (
       <Header
         placement="left"
         leftComponent={{ icon: 'menu', color: '#fff' }}
         centerComponent={{ text: 'COVID Statement', style: { color: '#fff' } }}
+        rightComponent={this.renderAvatar(avatarUrl)}
       />);
   }
 
@@ -248,8 +292,9 @@ export default class App extends Component {
   }
 
   componentDidMount() {
+    this.doGoogleLogin();
     this.getTokenFromStorage();
     this.getVideoInfoFromStorage();
-    this.getCameraPermissions();
+    this.checkPermissions();
   }
 }

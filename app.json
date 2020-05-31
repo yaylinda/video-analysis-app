@@ -27,7 +27,6 @@
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ]
     }
