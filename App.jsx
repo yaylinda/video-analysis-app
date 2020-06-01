@@ -1,15 +1,16 @@
 import React, { Component } from 'react';
 import { AsyncStorage, View } from 'react-native';
-import { Avatar, Button, Text, Header } from 'react-native-elements';
+import { Avatar, Button, Text, Header, Overlay } from 'react-native-elements';
 import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import * as Google from 'expo-google-app-auth';
 import * as Permissions from 'expo-permissions';
-import { STORAGE_KEYS, VIDEO_STATUS } from './constants';
-import { uploadVideo, annotateVideo, getAnnotationResults } from './googlecloud';
-import statement from './statement.js';
-import styles from './styles';
+import { STORAGE_KEYS, VIDEO_STATUS, GOOGLE_AUTH_SCOPES } from './constants';
+import { annotateVideo, getAnnotationResults } from './googlecloud';
 import Environment from './config/environment';
+import { Video } from 'expo-av';
+import _ from 'lodash';
+import * as Device from 'expo-device';
 
 export default class App extends Component {
 
@@ -21,6 +22,7 @@ export default class App extends Component {
       videoInfo: null,
       hasPermission: false,
       showCamera: false,
+      showOverlay: false,
       isRecording: false,
       cameraData: null,
       isUploading: false,
@@ -41,7 +43,7 @@ export default class App extends Component {
       googleLoginResult = await Google.logInAsync({
         androidClientId: Environment['ANDROID_CLIENT_ID'],
         iosClientId: Environment['IOS_CLIENT_ID'],
-        scopes: ['profile', 'email', 'https://www.googleapis.com/auth/cloud-platform'],
+        scopes: GOOGLE_AUTH_SCOPES,
       });
 
       console.log(`doGoogleLogin - got result from login: ${JSON.stringify(googleLoginResult)}`);
@@ -87,7 +89,7 @@ export default class App extends Component {
   }
 
   toggleCamera() {
-    this.setState({ showCamera: !this.state.showCamera });
+    this.setState({ showCamera: !this.state.showCamera, showResults: false });
     console.log(`toggleCamera - this.state.showCamera: ${this.state.showCamera}`);
   }
 
@@ -97,7 +99,7 @@ export default class App extends Component {
     console.log('stopRecording - calling camera.stopRecording');
     this.camera.stopRecording();
     console.log(`stopRecording - this.state.cameraData: ${JSON.stringify(this.state.cameraData)}`);
-    this.setState({ showCamera: false });
+    this.setState({ showCamera: false, showOverlay: true });
   }
 
   startRecording() {
@@ -110,14 +112,34 @@ export default class App extends Component {
     console.log('startRecording - called async recordAsync');
   }
 
+  toggleOverlay() {
+    console.log('toggleOverlay');
+    this.setState({ showOverlay: false });
+  }
+
   async uploadAndAnnotateVideo() {
     this.setState({ isUploading: true });
+
+    // Refresh Google Auth Token before upload
+    const refreshResponse = await makeApiRequest(
+      GOOGLE_TOKEN_URL, 
+      'POST', 
+      { 
+        'Content-Type' : 'application/x-www-form-urlencoded',
+      }, 
+      {
+        client_id: Device.osName === 'Android' ? Environment['ANDROID_CLIENT_ID'] : Environment['IOS_CLIENT_ID'],
+        refresh_token: this.state.googleLoginResult.refreshToken,
+        grant_type: 'refresh_token',
+      }
+    );
+
+    // TODO - get new access token from refresh response
 
     console.log(`uploadAndAnnotateVideo - ${this.state.cameraData.uri}`);
 
     const videoInfo = {
       localUri: this.state.cameraData.uri,
-      createdTime: new Date().toString(),
       annotationStatus: VIDEO_STATUS.NOT_STARTED,
       annotationResults: null,
     }
@@ -217,9 +239,6 @@ export default class App extends Component {
           </View>
         </View>
         {
-          this.renderUploadVideoButton()
-        }
-        {
           this.renderRecordVideoButton()
         }
       </View>
@@ -237,26 +256,9 @@ export default class App extends Component {
           </View>
         </View>
         {
-          this.renderUploadVideoButton()
-        }
-        {
           this.renderRecordVideoButton()
         }
       </View>
-    );
-  }
-
-  renderAvatar(avatarUrl) {
-
-    console.log(`***************** ${avatarUrl}`);
-
-    return (
-      <Avatar
-        rounded
-        source={{
-          uri: `${avatarUrl}`,
-        }}
-      />
     );
   }
 
@@ -266,18 +268,17 @@ export default class App extends Component {
       avatarUrl = this.state.googleLoginResult.user.photoUrl;
     }
 
-    console.log(`renderHeader - avatarUrl: ${avatarUrl}`);
-
     return (
       <Header
         placement="left"
         leftComponent={{ icon: 'menu', color: '#fff' }}
         centerComponent={{ text: 'COVID Statement', style: { color: '#fff' } }}
-        rightComponent={this.renderAvatar(avatarUrl)}
+        rightComponent={<Avatar rounded source={{ uri: `${avatarUrl}` }} />}
       />);
   }
 
   render() {
+    const videoUri = _.get(this.state, 'videoInfo.localUri', null);
     return (
       <View style={{ flex: 1 }}>
         {
@@ -286,6 +287,15 @@ export default class App extends Component {
             this.state.showCamera ?
               this.renderCameraView() :
               this.renderTokenView()
+        }
+        {
+          <Overlay isVisible={this.state.showOverlay} onBackdropPress={this.toggleOverlay.bind(this)}>
+            <View>
+              <Text>Confirm Upload for Processing</Text>
+              {videoUri ? <Video source={{ uri: `${videoUri}` }} style={{ width: 300, height: 300 }} /> : null}
+              {this.renderUploadVideoButton()}
+            </View>
+          </Overlay>
         }
       </View>
     );

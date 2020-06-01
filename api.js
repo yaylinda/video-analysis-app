@@ -14,5 +14,5 @@ export const makeApiRequest = (endpoint, method, headers, body) => {
       console.log(`makeApiRequest - error`);
     }
     return response.json();
-  })
+  });
 }
