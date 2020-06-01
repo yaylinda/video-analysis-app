@@ -5,12 +5,13 @@ import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import * as Google from 'expo-google-app-auth';
 import * as Permissions from 'expo-permissions';
-import { STORAGE_KEYS, VIDEO_STATUS, GOOGLE_AUTH_SCOPES } from './constants';
+import { STORAGE_KEYS, VIDEO_STATUS, GOOGLE_AUTH_SCOPES, GOOGLE_TOKEN_URL } from './constants';
 import { annotateVideo, getAnnotationResults } from './googlecloud';
 import Environment from './config/environment';
 import { Video } from 'expo-av';
 import _ from 'lodash';
 import * as Device from 'expo-device';
+import { makeApiRequest } from './api';
 
 export default class App extends Component {
 
@@ -117,52 +118,46 @@ export default class App extends Component {
     this.setState({ showOverlay: false });
   }
 
-  async uploadAndAnnotateVideo() {
-    this.setState({ isUploading: true });
+  async refreshAccessToken() {
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
 
-    // Refresh Google Auth Token before upload
+    const urlencoded = new URLSearchParams();
+    urlencoded.append("client_id", Device.osName === 'Android' ? Environment['ANDROID_CLIENT_ID'] : Environment['IOS_CLIENT_ID']);
+    urlencoded.append("refresh_token", _.get(this.state, 'googleLoginResult.refreshToken', null));
+    urlencoded.append("grant_type", "refresh_token");
+
     const refreshResponse = await makeApiRequest(
       GOOGLE_TOKEN_URL, 
       'POST', 
-      { 
-        'Content-Type' : 'application/x-www-form-urlencoded',
-      }, 
-      {
-        client_id: Device.osName === 'Android' ? Environment['ANDROID_CLIENT_ID'] : Environment['IOS_CLIENT_ID'],
-        refresh_token: this.state.googleLoginResult.refreshToken,
-        grant_type: 'refresh_token',
-      }
+      headers, 
+      urlencoded.toString()
     );
 
-    // TODO - get new access token from refresh response
+    return refreshResponse;
+  }
 
-    console.log(`uploadAndAnnotateVideo - ${this.state.cameraData.uri}`);
+  async uploadAndAnnotateVideo() {
+    this.setState({ isUploading: true });
 
+    const refreshResponse = await this.refreshAccessToken();
+  
     const videoInfo = {
       localUri: this.state.cameraData.uri,
       annotationStatus: VIDEO_STATUS.NOT_STARTED,
       annotationResults: null,
     }
 
-    console.log(`uploadAndAnnotateVideo - videoInfo: ${JSON.stringify(videoInfo)}`);
-
     await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
 
-    console.log('uploadAndAnnotateVideo - finitshed setting videoInfo in AsyncStorage');
+    const result = await annotateVideo(videoInfo.localUri, refreshResponse['access_token']);
 
-    const result = await annotateVideo(videoInfo.localUri, this.state.googleLoginResult.accessToken);
-
-    console.log(`uploadAndAnnotateVideo - annotation result: ${JSON.stringify(result)}`);
-
-    const transcription = await getAnnotationResults(result.name, this.state.googleLoginResult.accessToken);
-
-    console.log(`uploadAndAnnotateVideo - transcription: ${JSON.stringify(transcription)}`);
+    const transcription = await getAnnotationResults(result.name, refreshResponse['access_token']);
 
     videoInfo['annotationStatus'] = VIDEO_STATUS.SUCCESS;
     videoInfo['annotationResults'] = transcription;
     await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
 
-    this.setState({ isUploading: false, showResults: true, videoInfo });
+    this.setState({ isUploading: false, showResults: true, showOverlay: false, videoInfo });
   }
 
   renderRecordVideoButton() {
@@ -181,6 +176,7 @@ export default class App extends Component {
       <Button
         title="Upload Video"
         disabled={this.state.cameraData === null || this.state.isUploading}
+        loading={this.state.isUploading}
         onPress={() => this.uploadAndAnnotateVideo()}
       />
     );
@@ -278,7 +274,7 @@ export default class App extends Component {
   }
 
   render() {
-    const videoUri = _.get(this.state, 'videoInfo.localUri', null);
+    const videoUri = _.get(this.state, 'cameraData.uri', null);
     return (
       <View style={{ flex: 1 }}>
         {
@@ -291,7 +287,7 @@ export default class App extends Component {
         {
           <Overlay isVisible={this.state.showOverlay} onBackdropPress={this.toggleOverlay.bind(this)}>
             <View>
-              <Text>Confirm Upload for Processing</Text>
+              <Text>Confirm Video Upload for Processing</Text>
               {videoUri ? <Video source={{ uri: `${videoUri}` }} style={{ width: 300, height: 300 }} /> : null}
               {this.renderUploadVideoButton()}
             </View>

@@ -5,6 +5,7 @@ export const makeApiRequest = (endpoint, method, headers, body) => {
     method: method,
     headers: headers,
     body: body,
+    redirect: 'follow',
   }).then((response) => {
     if (response.ok) {
       requestSuccess = true;
