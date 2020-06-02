@@ -13,3 +13,9 @@ export const VIDEO_STATUS = {
 
 export const GOOGLE_AUTH_SCOPES = ['profile', 'email', 'https://www.googleapis.com/auth/cloud-platform'];
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+export const COLORS = {
+  LIGHT_GRAY: '#e1e3eb',
+  WHITE: 'white',
+  MAIN_BLUE: '#2089dc'
+}

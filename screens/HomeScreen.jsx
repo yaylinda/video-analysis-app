@@ -1,8 +1,6 @@
 import React, { Component } from 'react';
 import { AsyncStorage, View } from 'react-native';
-import { Avatar, Button, Text, Header, Overlay } from 'react-native-elements';
-import { Camera } from 'expo-camera';
-import Icon from 'react-native-vector-icons/FontAwesome';
+import { Button, Text, Overlay } from 'react-native-elements';
 import * as Google from 'expo-google-app-auth';
 import * as Permissions from 'expo-permissions';
 import { STORAGE_KEYS, VIDEO_STATUS, GOOGLE_AUTH_SCOPES, GOOGLE_TOKEN_URL } from '../constants';
@@ -24,7 +22,6 @@ export default class HomeScreen extends Component {
           hasPermission: false,
           showCamera: false,
           showOverlay: false,
-          isRecording: false,
           cameraData: null,
           isUploading: false,
           showResults: false,
@@ -89,30 +86,6 @@ export default class HomeScreen extends Component {
         console.log(`getPermissions - this.state.hasPermission: ${this.state.hasPermission}`);
       }
     
-      toggleCamera() {
-        this.setState({ showCamera: !this.state.showCamera, showResults: false });
-        console.log(`toggleCamera - this.state.showCamera: ${this.state.showCamera}`);
-      }
-    
-      stopRecording() {
-        this.setState({ isRecording: false });
-        console.log(`stopRecording - this.state.isRecording: ${this.state.isRecording}`);
-        console.log('stopRecording - calling camera.stopRecording');
-        this.camera.stopRecording();
-        console.log(`stopRecording - this.state.cameraData: ${JSON.stringify(this.state.cameraData)}`);
-        this.setState({ showCamera: false, showOverlay: true });
-      }
-    
-      startRecording() {
-        this.setState({ isRecording: true });
-        console.log(`startRecording - this.state.isRecording: ${this.state.isRecording}`);
-        console.log('startRecording - calling recordAsync');
-        if (this.camera) {
-          this.camera.recordAsync().then((data) => this.setState({ cameraData: data }));
-        }
-        console.log('startRecording - called async recordAsync');
-      }
-    
       toggleOverlay() {
         console.log('toggleOverlay');
         this.setState({ showOverlay: false });
@@ -161,12 +134,13 @@ export default class HomeScreen extends Component {
       }
     
       renderRecordVideoButton() {
+        const personName = _.get(this.state, 'googleLoginResult.user.name');
         return (
           <Button
             buttonStyle={{ height: 70 }}
             disabled={this.state.isUploading}
             title="Record Video"
-            onPress={() => this.toggleCamera()}
+            onPress={() => this.props.navigation.navigate('Camera', { personName })}
           />
         );
       }
@@ -182,47 +156,9 @@ export default class HomeScreen extends Component {
         );
       }
     
-      renderCameraView() {
-        return (
-          <View style={{ flex: 1 }}>
-            <Camera
-              ref={ref => {
-                this.camera = ref;
-              }}
-              style={{ flex: 1 }}
-              type={Camera.Constants.Type.front}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: 'transparent',
-                  flexDirection: 'row',
-                }}>
-              </View>
-              {
-                this.state.isRecording ?
-                  <Button
-                    title="Stop Recording"
-                    buttonStyle={{ backgroundColor: 'red', height: 70 }}
-                    icon={<Icon name="stop" size={15} color="white" />}
-                    onPress={() => this.stopRecording()}
-                  /> :
-                  <Button
-                    title="Start Recording"
-                    buttonStyle={{ backgroundColor: 'green', height: 70 }}
-                    icon={<Icon name="play" size={15} color="white" />}
-                    onPress={() => this.startRecording()}
-                  />
-              }
-            </Camera>
-          </View>
-        );
-      }
-    
       renderTokenView() {
         return (
           <View style={{ flex: 1 }}>
-            {this.renderHeader()}
             <View style={{ flex: 1, padding: 20 }}>
               <View style={{ flex: 1, backgroundColor: 'light-grey' }}>
                 {
@@ -244,7 +180,6 @@ export default class HomeScreen extends Component {
       renderResults() {
         return (
           <View style={{ flex: 1 }}>
-            {this.renderHeader()}
             <View style={{ flex: 1, padding: 20 }}>
               <View style={{ flex: 1, backgroundColor: 'light-grey' }}>
                 <Text>You said:</Text>
@@ -258,21 +193,6 @@ export default class HomeScreen extends Component {
         );
       }
     
-      renderHeader() {
-        let avatarUrl = null;
-        if (this.state.googleLoginResult && this.state.googleLoginResult.type === 'success' && this.state.googleLoginResult.user) {
-          avatarUrl = this.state.googleLoginResult.user.photoUrl;
-        }
-    
-        return (
-          <Header
-            placement="left"
-            leftComponent={{ icon: 'menu', color: '#fff' }}
-            centerComponent={{ text: 'COVID Statement', style: { color: '#fff' } }}
-            rightComponent={<Avatar rounded source={{ uri: `${avatarUrl}` }} />}
-          />);
-      }
-    
       render() {
         const videoUri = _.get(this.state, 'cameraData.uri', null);
         return (
@@ -280,8 +200,6 @@ export default class HomeScreen extends Component {
             {
               this.state.showResults ?
                 this.renderResults() :
-                this.state.showCamera ?
-                  this.renderCameraView() :
                   this.renderTokenView()
             }
             {
