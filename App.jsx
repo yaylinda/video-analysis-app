@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import HomeScreen from './screens/HomeScreen';
 import CameraScreen from './screens/CameraScreen';
 import { COLORS } from './constants';
+import ReviewScreen from './screens/ReviewScreen';
 
 const Stack = createStackNavigator();
 
@@ -35,7 +36,19 @@ export default class App extends Component {
               headerTintColor: COLORS.WHITE,
             }}
           />
+          <Stack.Screen 
+            name="Review" 
+            component={ReviewScreen} 
+            options={{
+              title: 'Review Video',
+              headerStyle: {
+                backgroundColor: COLORS.MAIN_BLUE,
+              },
+              headerTintColor: COLORS.WHITE,
+            }}
+          />
         </Stack.Navigator>
+        
       </NavigationContainer>
     );
   }

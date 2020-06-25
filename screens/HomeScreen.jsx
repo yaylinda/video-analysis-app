@@ -10,6 +10,9 @@ import { Video } from 'expo-av';
 import _ from 'lodash';
 import * as Device from 'expo-device';
 import { makeApiRequest } from '../api';
+import statement from '../statement';
+import { AppLoading } from 'expo';
+import { NavigationEvents } from 'react-navigation';
 
 export default class HomeScreen extends Component {
     
@@ -20,11 +23,8 @@ export default class HomeScreen extends Component {
           token: null,
           videoInfo: null,
           hasPermission: false,
-          showCamera: false,
-          showOverlay: false,
-          cameraData: null,
-          isUploading: false,
           showResults: false,
+          isUploading: false,
         }
       }
     
@@ -86,53 +86,6 @@ export default class HomeScreen extends Component {
         console.log(`getPermissions - this.state.hasPermission: ${this.state.hasPermission}`);
       }
     
-      toggleOverlay() {
-        console.log('toggleOverlay');
-        this.setState({ showOverlay: false });
-      }
-    
-      async refreshAccessToken() {
-        const headers = { "Content-Type": "application/x-www-form-urlencoded" };
-    
-        const urlencoded = new URLSearchParams();
-        urlencoded.append("client_id", Device.osName === 'Android' ? Environment['ANDROID_CLIENT_ID'] : Environment['IOS_CLIENT_ID']);
-        urlencoded.append("refresh_token", _.get(this.state, 'googleLoginResult.refreshToken', null));
-        urlencoded.append("grant_type", "refresh_token");
-    
-        const refreshResponse = await makeApiRequest(
-          GOOGLE_TOKEN_URL, 
-          'POST', 
-          headers, 
-          urlencoded.toString()
-        );
-    
-        return refreshResponse;
-      }
-    
-      async uploadAndAnnotateVideo() {
-        this.setState({ isUploading: true });
-    
-        const refreshResponse = await this.refreshAccessToken();
-      
-        const videoInfo = {
-          localUri: this.state.cameraData.uri,
-          annotationStatus: VIDEO_STATUS.NOT_STARTED,
-          annotationResults: null,
-        }
-    
-        await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
-    
-        const result = await annotateVideo(videoInfo.localUri, refreshResponse['access_token']);
-    
-        const transcription = await getAnnotationResults(result.name, refreshResponse['access_token']);
-    
-        videoInfo['annotationStatus'] = VIDEO_STATUS.SUCCESS;
-        videoInfo['annotationResults'] = transcription;
-        await AsyncStorage.setItem(STORAGE_KEYS.VIDEO_INFO, JSON.stringify(videoInfo));
-    
-        this.setState({ isUploading: false, showResults: true, showOverlay: false, videoInfo });
-      }
-    
       renderRecordVideoButton() {
         const personName = _.get(this.state, 'googleLoginResult.user.name');
         return (
@@ -140,22 +93,11 @@ export default class HomeScreen extends Component {
             buttonStyle={{ height: 70 }}
             disabled={this.state.isUploading}
             title="Record Video"
-            onPress={() => this.props.navigation.navigate('Camera', { personName })}
+            onPress={() => this.props.navigation.navigate('Camera', { personName, statement })}
           />
         );
       }
-    
-      renderUploadVideoButton() {
-        return (
-          <Button
-            title="Upload Video"
-            disabled={this.state.cameraData === null || this.state.isUploading}
-            loading={this.state.isUploading}
-            onPress={() => this.uploadAndAnnotateVideo()}
-          />
-        );
-      }
-    
+
       renderTokenView() {
         return (
           <View style={{ flex: 1 }}>
@@ -192,24 +134,21 @@ export default class HomeScreen extends Component {
           </View>
         );
       }
-    
-      render() {
-        const videoUri = _.get(this.state, 'cameraData.uri', null);
+
+      renderUploading() {
         return (
           <View style={{ flex: 1 }}>
+            <Text>Processing video...</Text>
+          </View>
+        );
+      }
+    
+      render() {
+        return (
+          <View style={{ flex: 1 }}>
+            <NavigationEvents onWillFocus={() => this.setStateFromRouteParams()} />
             {
-              this.state.showResults ?
-                this.renderResults() :
-                  this.renderTokenView()
-            }
-            {
-              <Overlay isVisible={this.state.showOverlay} onBackdropPress={this.toggleOverlay.bind(this)}>
-                <View>
-                  <Text>Confirm Video Upload for Processing</Text>
-                  {videoUri ? <Video source={{ uri: `${videoUri}` }} style={{ width: 300, height: 300 }} /> : null}
-                  {this.renderUploadVideoButton()}
-                </View>
-              </Overlay>
+              this.state.isUploading ? this.renderUploading() : this.state.showResults ? this.renderResults() : this.renderTokenView() 
             }
           </View>
         );
@@ -220,5 +159,12 @@ export default class HomeScreen extends Component {
         this.getTokenFromStorage();
         this.getVideoInfoFromStorage();
         this.checkPermissions();
+      }
+
+      setStateFromRouteParams() {
+        console.log(`HomeScreen - setStateFromProps: ${JSON.stringify(this.props.route.params)}`);
+        if (this.props.route.params) {
+          this.setState({ isUploading: this.props.route.params.isUploading });
+        }
       }
 }

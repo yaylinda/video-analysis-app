@@ -1,8 +1,7 @@
 import React, { Component } from 'react';
-import PropTypes from 'prop-types';
 import { View } from "react-native";
 import { Camera } from 'expo-camera';
-import { Button, Text, Divider } from 'react-native-elements';
+import { Button, Text } from 'react-native-elements';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { COLORS } from '../constants';
 
@@ -13,21 +12,11 @@ export default class CameraScreen extends Component {
         this.state = {
             isRecording: false,
             cameraData: null,
-            showOverlay: false,
         }
     }
 
     componentDidMount() {
 
-    }
-
-    stopRecording() {
-        this.setState({ isRecording: false });
-        console.log(`stopRecording - this.state.isRecording: ${this.state.isRecording}`);
-        console.log('stopRecording - calling camera.stopRecording');
-        this.camera.stopRecording();
-        console.log(`stopRecording - this.state.cameraData: ${JSON.stringify(this.state.cameraData)}`);
-        this.setState({ showOverlay: true });
     }
 
     startRecording() {
@@ -40,25 +29,25 @@ export default class CameraScreen extends Component {
         console.log('startRecording - called async recordAsync');
     }
 
+    stopRecording() {
+        this.setState({ isRecording: false });
+        console.log(`stopRecording - this.state.isRecording: ${this.state.isRecording}`);
+        console.log('stopRecording - calling camera.stopRecording');
+        this.camera.stopRecording();
+        console.log(`stopRecording - this.state.cameraData: ${JSON.stringify(this.state.cameraData)}`);
+        this.props.navigation.navigate('Review', { videoUri: this.state.cameraData.uri });
+    }
+
     render() {
         return (
             <View style={{ flex: 1 }}>
                 <View style={{ paddingHorizontal: 10, paddingTop: 0, paddingBottom: 10 }}>
                     <View style={{ padding: 10 }}>
-                    <Text h4>
-                        Please record yourself reading the following statement:
-                        </Text>
-                        </View>
+                        <Text h4>Please record yourself reading the following statement:</Text>
+                    </View>
                     <View style={{ padding: 10, backgroundColor: COLORS.LIGHT_GRAY, borderRadius: 10 }}>
-                        <Text>
-                            My name is {this.props.route.params.personName}.
-                            </Text>
-                        <Text>
-                            I am unaware of having any symptoms related to the coronavirus.
-                            </Text>
-                        <Text>
-                            I am unaware of having interacted with anyone who has any symptoms of the coronavirus.
-                        </Text>
+                        <Text>My name is {this.props.route.params.personName}.</Text>
+                        <Text>{this.props.route.params.statement}</Text>
                     </View>
                 </View>
                 <View style={{ flex: 1 }}>
